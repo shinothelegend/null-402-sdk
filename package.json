@@ -1,0 +1,39 @@
+{
+  "name": "null-402",
+  "version": "0.0.1",
+  "description": "Private pay-per-call on Stellar — x402 with zero-knowledge payment proofs. No wallet, amount, or endpoint revealed.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": ["x402", "stellar", "soroban", "zk", "groth16", "privacy", "payments"],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./server": { "types": "./dist/server.d.ts", "default": "./dist/server.js" },
+    "./client": { "types": "./dist/client.d.ts", "default": "./dist/client.js" }
+  },
+  "files": ["dist", "src"],
+  "scripts": {
+    "test": "node test/flow.test.mjs",
+    "test:real": "node test/real-proof.test.mjs",
+    "test:soroban": "node test/soroban.test.mjs",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@stellar/stellar-sdk": "^14.0.0",
+    "circomlibjs": "^0.1.7",
+    "snarkjs": "^0.7.5",
+    "typescript": "^5.5.3"
+  },
+  "peerDependencies": {
+    "@stellar/stellar-sdk": "^14.0.0",
+    "circomlibjs": "^0.1.7",
+    "snarkjs": "^0.7.5"
+  },
+  "peerDependenciesMeta": {
+    "@stellar/stellar-sdk": { "optional": true },
+    "circomlibjs": { "optional": true },
+    "snarkjs": { "optional": true }
+  }
+}
