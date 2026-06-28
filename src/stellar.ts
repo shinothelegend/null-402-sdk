@@ -50,29 +50,40 @@ async function loadSdk(): Promise<any> {
  *  confirmed deposit's balance/storage can take a few seconds to be visible to
  *  the simulate node). */
 async function submit(server: any, S: any, tx: any, secret: string): Promise<{ hash: string; returnValue: any }> {
-  let prepared: any;
+  const wait = () => new Promise((r) => setTimeout(r, 3000));
+  // Retry the whole prepare→send→poll through transient RPC races: a just-funded
+  // account (txNoAccount) or a just-confirmed deposit's balance/state not yet
+  // visible to the simulate/submit node.
   for (let attempt = 1; ; attempt++) {
     try {
-      prepared = await server.prepareTransaction(tx);
-      break;
+      const prepared = await server.prepareTransaction(tx); // re-simulates each attempt
+      prepared.sign(S.Keypair.fromSecret(secret));
+      const sent = await server.sendTransaction(prepared);
+      if (sent.status === "ERROR") {
+        const err = JSON.stringify(sent.errorResult ?? sent);
+        if (attempt < 10 && /txNoAccount|txBadSeq/i.test(err)) {
+          await wait();
+          continue;
+        }
+        throw new Error("sendTransaction ERROR: " + err);
+      }
+      let res = await server.getTransaction(sent.hash);
+      for (let i = 0; i < 40 && res.status === "NOT_FOUND"; i++) {
+        await new Promise((r) => setTimeout(r, 1500));
+        res = await server.getTransaction(sent.hash);
+      }
+      if (res.status !== "SUCCESS") throw new Error(`tx ${sent.hash} status=${res.status}`);
+      return { hash: sent.hash, returnValue: res.returnValue };
     } catch (e) {
-      if (attempt >= 6) throw e;
-      await new Promise((r) => setTimeout(r, 3000));
+      const m = String((e as Error)?.message ?? e);
+      // prepare/simulate transients (incl. balance-not-yet-visible) → retry
+      if (attempt < 10 && /txNoAccount|prepareTransaction|simulat|not found|insufficient|HostError|Contract, #10/i.test(m)) {
+        await wait();
+        continue;
+      }
+      throw e;
     }
   }
-  prepared.sign(S.Keypair.fromSecret(secret));
-  const sent = await server.sendTransaction(prepared);
-  if (sent.status === "ERROR") {
-    throw new Error("sendTransaction ERROR: " + JSON.stringify(sent.errorResult ?? sent));
-  }
-  const hash = sent.hash;
-  let res = await server.getTransaction(hash);
-  for (let i = 0; i < 40 && res.status === "NOT_FOUND"; i++) {
-    await new Promise((r) => setTimeout(r, 1500));
-    res = await server.getTransaction(hash);
-  }
-  if (res.status !== "SUCCESS") throw new Error(`tx ${hash} status=${res.status}`);
-  return { hash, returnValue: res.returnValue };
 }
 
 /** Agent escrows `amount` (stroops) and records `commitment` (decimal field). */
