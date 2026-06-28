@@ -9,5 +9,6 @@ export * from "./types.js";
 export * from "./proof.js";
 export * from "./encoding.js";
 export * from "./verifier.js";
+export * from "./stellar.js";
 export * from "./server.js";
 export * from "./client.js";

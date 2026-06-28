@@ -54,12 +54,33 @@ Verifier / Policy / Application are split: the verifier checks only cryptographi
 validity, the gate enforces recipient + amount tier + request binding + replay,
 your app runs only after both pass.
 
-## Phase 1 vs Phase 2
+## On-chain helpers
 
-- `devVerifier` / `devProver` are an **insecure** local scaffold so the flow runs
-  before the circuit/contracts exist. They require `allowInsecure: true` and must
-  never be used in production.
-- `sorobanVerifier` / `groth16Prover` are the real path — wired once
-  `packages/circuits` and `packages/contracts` are built and deployed.
+The SDK also talks to the deployed pool directly (real value moves):
+
+```ts
+import { poolDeposit, poolCommitments, poolSettle } from "null-402";
+// poolDeposit  → agent escrows XLM + records its commitment   (signed tx)
+// poolCommitments → read the on-chain commitment list (build the tree off-chain)
+// poolSettle   → operator: on-chain Groth16 verify → pay provider → spend nullifier
+```
+
+## Tests
+
+```
+npm test            # dev flow            → 7/7
+npm run test:real   # real Groth16 prove+verify (snarkjs) → 4/4
+npm run test:soroban# live verify on Stellar testnet      → 2/2
+```
+
+`test:real` generates a real proof and verifies it with snarkjs; `test:soroban`
+verifies the same proof against the **deployed testnet verifier** contract.
+
+## Real vs. scaffold
+
+- `groth16Prover` / `localGroth16Verifier` / `sorobanVerifier` — the **real** path
+  (snarkjs proof, off-chain verify, and on-chain verify on Stellar).
+- `devVerifier` / `devProver` — an **insecure** local scaffold, gated behind
+  `allowInsecure: true`, for offline dev only.
 
 MIT.
