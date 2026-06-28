@@ -24,6 +24,19 @@ export interface PoolConfig {
 
 const toBuf = (u: Uint8Array): any => (globalThis as any).Buffer.from(u);
 
+/** getAccount with retry — a just-funded account (friendbot) can take a few
+ *  seconds to be visible to the Soroban RPC. */
+async function getAccount(server: any, pub: string, attempts = 12): Promise<any> {
+  for (let i = 1; ; i++) {
+    try {
+      return await server.getAccount(pub);
+    } catch (e) {
+      if (i >= attempts) throw e;
+      await new Promise((r) => setTimeout(r, 2500));
+    }
+  }
+}
+
 async function loadSdk(): Promise<any> {
   const spec = "@stellar/stellar-sdk";
   const m: any = await import(spec);
@@ -70,7 +83,7 @@ export async function poolDeposit(
   const server = new S.rpc.Server(opts.rpcUrl, { allowHttp: opts.rpcUrl.startsWith("http://") });
   const kp = S.Keypair.fromSecret(opts.signerSecret);
   const from = kp.publicKey();
-  const account = await server.getAccount(from);
+  const account = await getAccount(server, from);
   const op = new S.Contract(opts.poolContractId).call(
     "deposit",
     new S.Address(from).toScVal(),
@@ -92,7 +105,7 @@ export async function poolCommitments(
 ): Promise<string[]> {
   const S = await loadSdk();
   const server = new S.rpc.Server(opts.rpcUrl, { allowHttp: opts.rpcUrl.startsWith("http://") });
-  const account = await server.getAccount(opts.sourceAccount);
+  const account = await getAccount(server, opts.sourceAccount);
   const tx = new S.TransactionBuilder(account, { fee: S.BASE_FEE, networkPassphrase: PASSPHRASE[opts.network] })
     .addOperation(new S.Contract(opts.poolContractId).call("commitments"))
     .setTimeout(30)
@@ -115,7 +128,7 @@ export async function poolSettle(
   const S = await loadSdk();
   const server = new S.rpc.Server(opts.rpcUrl, { allowHttp: opts.rpcUrl.startsWith("http://") });
   const kp = S.Keypair.fromSecret(opts.operatorSecret);
-  const account = await server.getAccount(kp.publicKey());
+  const account = await getAccount(server, kp.publicKey());
   const p = opts.bundle.proof as { pi_a: string[]; pi_b: string[][]; pi_c: string[] };
   const sym = (s: string) => S.xdr.ScVal.scvSymbol(s);
   const bytes = (u: Uint8Array) => S.xdr.ScVal.scvBytes(toBuf(u));
