@@ -241,6 +241,62 @@ export async function emptyPoolWitness(
   return { commitment: commitment.toString(), pathElements, pathIndices, merkleRoot: cur.toString() };
 }
 
+/** The note's commitment = Poseidon(noteSecret, nullifierSecret, value). */
+export async function noteCommitment(note: Note): Promise<string> {
+  const poseidon = await loadPoseidon();
+  const F = poseidon.F;
+  return F.toObject(poseidon([BigInt(note.secret), BigInt(note.nullifierSecret), note.value])).toString();
+}
+
+/**
+ * Build the Merkle witness for a note at `leafIndex` of the **shared** Pool tree,
+ * given ALL on-chain commitments. Every note in the pool proves membership in the
+ * same tree → every settlement references the same root → spends are unlinkable.
+ * This is the real anonymity set (= number of deposits). Matches payment.circom
+ * (Poseidon HashLeftRight, zero-padded fixed depth).
+ */
+export async function buildPoolWitness(
+  commitments: string[],
+  leafIndex: number,
+  levels = 20,
+): Promise<{ pathElements: string[]; pathIndices: number[]; merkleRoot: string }> {
+  const poseidon = await loadPoseidon();
+  const F = poseidon.F;
+  const H = (a: bigint, b: bigint): bigint => F.toObject(poseidon([a, b]));
+
+  const zeros: bigint[] = [0n];
+  for (let i = 1; i <= levels; i++) zeros.push(H(zeros[i - 1]!, zeros[i - 1]!));
+
+  let layer: bigint[] = commitments.length ? commitments.map((c) => BigInt(c)) : [0n];
+  const pathElements: string[] = [];
+  const pathIndices: number[] = [];
+  let idx = leafIndex;
+
+  for (let l = 0; l < levels; l++) {
+    const isRight = idx & 1;
+    const sibIdx = isRight ? idx - 1 : idx + 1;
+    const sibling = sibIdx < layer.length ? layer[sibIdx]! : zeros[l]!;
+    pathElements.push(sibling.toString());
+    pathIndices.push(isRight);
+
+    const next: bigint[] = [];
+    for (let i = 0; i < layer.length; i += 2) {
+      const left = layer[i]!;
+      const right = i + 1 < layer.length ? layer[i + 1]! : zeros[l]!;
+      next.push(H(left, right));
+    }
+    layer = next.length ? next : [zeros[l + 1]!];
+    idx = idx >> 1;
+  }
+
+  return { pathElements, pathIndices, merkleRoot: (layer[0] ?? zeros[levels]!).toString() };
+}
+
+/** The current Pool Merkle root from its on-chain commitment list. */
+export async function poolRoot(commitments: string[], levels = 20): Promise<string> {
+  return (await buildPoolWitness(commitments, 0, levels)).merkleRoot;
+}
+
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 /** Random BN254 field element (decimal string) — note secrets live in the field. */
